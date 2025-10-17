@@ -1,0 +1,18 @@
+[Unit]
+Description=Custom ASCII Boot Progress
+After=local-fs.target
+Before=getty@tty1.service
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/boot.sh
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+Environment=TERM=xterm
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

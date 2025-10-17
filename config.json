@@ -1,0 +1,32 @@
+{
+  "file_mappings": [
+    {
+      "src": "/tmp/mimo-output/file/boot.sh",
+      "dst": "/usr/local/bin/boot.sh"
+    },
+    {
+      "src": "/tmp/mimo-output/file/boot.service",
+      "dst": "/etc/systemd/system/boot.service"
+    },
+    {
+      "src": "/tmp/mimo-output/file/gen-issue.sh",
+      "dst": "/usr/local/bin/gen-issue.sh"
+    },
+    {
+      "src": "/tmp/mimo-output/file/override.conf",
+      "dst": "/etc/systemd/system/getty@tty1.service.d/override.conf"
+    },
+    {
+      "src": "/tmp/mimo-output/file/rdma-nvme.conf",
+      "dst": "/etc/modules-load.d/rdma-nvme.conf"
+    },
+    {
+      "src": "/tmp/mimo-output/file/mst.service",
+      "dst": "/etc/systemd/system/mst.service"
+    },
+    {
+      "src": "/tmp/mimo-output/file/welcome.sh",
+      "dst": "/etc/profile.d/welcome.sh"
+    }
+  ]
+}

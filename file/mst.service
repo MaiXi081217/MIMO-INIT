@@ -1,0 +1,12 @@
+[Unit]
+Description=Start Mellanox mst
+After=multi-user.target
+Wants=multi-user.tar get
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/mst start
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
