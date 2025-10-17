@@ -46,47 +46,93 @@ func RegisterCopyActions(txn *transaction.Transaction, cfg *Config) error {
 		}
 
 		do := func() error {
-			if _, err := os.Stat(src); err != nil {
+			info, err := os.Stat(src)
+			if err != nil {
 				return fmt.Errorf("source not found: %s", src)
 			}
+
 			fmt.Printf("[INFO] 正在复制文件: %s -> %s\n", src, dst)
 			os.MkdirAll(filepath.Dir(dst), 0755)
-			sf, err := os.Open(src)
-			if err != nil {
-				return err
-			}
-			defer sf.Close()
-			df, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-			if err != nil {
-				return err
-			}
-			defer df.Close()
 
-			if _, err := io.Copy(df, sf); err != nil {
-				return err
+			if info.IsDir() {
+				return copyDir(src, dst)
 			}
-
-			// 自动加可执行权限
-			ext := filepath.Ext(dst)
-			if ext == ".sh" || ext == ".service" {
-				if err := os.Chmod(dst, 0755); err != nil {
-					return fmt.Errorf("设置执行权限失败: %v", err)
-				}
-			}
-
-			return nil
+			return copyFile(src, dst)
 		}
 
 		undo := func() error {
 			if backupPath != "" {
-				_ = os.Remove(dst)
+				_ = os.RemoveAll(dst)
 				return os.Rename(backupPath, dst)
 			}
-			return os.Remove(dst)
+			return os.RemoveAll(dst)
 		}
 
 		txn.Add(fmt.Sprintf("copy %s -> %s", src, dst), do, undo)
 	}
+	return nil
+}
 
+// ========== 辅助函数 ==========
+
+// 复制单个文件
+func copyFile(src, dst string) error {
+	sf, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sf.Close()
+
+	df, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer df.Close()
+
+	if _, err := io.Copy(df, sf); err != nil {
+		return err
+	}
+
+	// 自动加执行权限
+	ext := filepath.Ext(dst)
+	if ext == ".sh" || ext == ".service" {
+		if err := os.Chmod(dst, 0755); err != nil {
+			return fmt.Errorf("设置执行权限失败: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// 递归复制整个目录
+func copyDir(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
