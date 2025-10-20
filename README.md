@@ -31,3 +31,8 @@ config.json里面保存了解压出来的临时目录文件以及需要复制过
 需要复制的文件位于file
 
 如果需要增加系统需要修改的文件，将文件复制到file中，并再config里面加上需要复制到的目录
+
+如果需要直接将spdk嵌入程序内，使用命令:
+```sh
+git submodule update --init
+```
