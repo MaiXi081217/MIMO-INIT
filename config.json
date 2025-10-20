@@ -27,14 +27,6 @@
     {
       "src": "/tmp/mimo-output/file/welcome.sh",
       "dst": "/etc/profile.d/welcome.sh"
-    },
-    {
-      "src": "/tmp/mimo-output/file/MLNX_OFED_LINUX-23.10-5.1.4.0-ubuntu20.04-x86_64",
-      "dst": "/usr/local/OFED"
-    },
-    {
-      "src": "/tmp/mimo-output/file/SPDK_for_MIMO",
-      "dst": "/usr/local/mimo"
     }
   ]
 }
