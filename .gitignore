@@ -1,0 +1,15 @@
+# Ignore bin directory completely
+/bin/
+
+# Ignore everything in resources
+/resources/
+
+# Ignore everything in internal/decompress except decompress.go
+/internal/decompress/*
+!/internal/decompress/decompress.go
+
+# Optional: ignore editor/temp files
+*.swp
+*.tmp
+*.bak
+.DS_Store
