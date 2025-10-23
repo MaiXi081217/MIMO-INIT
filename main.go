@@ -208,8 +208,8 @@ func main() {
 
 		Options:
 			--help          Show this help message
-			--update        Execute system update
-			--tgt           Execute target update`)
+			--sys-update        Execute system update
+			--target-update         Execute target update`)
 		return
 	}
 
@@ -221,5 +221,5 @@ func main() {
 		runtgtUpdate()
 		fmt.Println("[INFO] Target update mode is not implemented yet")
 	}
-	fmt.Println("Specify one of the options: --help | --update")
+	fmt.Println("Specify one of the options: -help")
 }
