@@ -5,64 +5,70 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
+	"regexp"
 
 	"resourcemgr/internal/transaction"
 )
 
-// RegisterGrubActions 将 GRUB 修改和 initramfs 消息加入事务
-func RegisterGrubActions(txn *transaction.Transaction) error {
+// RegisterGrubAndInitActions 将 GRUB 修改和 initramfs 脚本加入事务
+func RegisterGrubAndInitActions(txn *transaction.Transaction) error {
+	// -------------------------------
+	// 1. GRUB 修改
+	// -------------------------------
 	grubFile := "/etc/default/grub"
-	orig := []byte{}
+	origGrub := []byte{}
 	if b, err := os.ReadFile(grubFile); err == nil {
-		orig = b
+		origGrub = b
 	}
-	// 修改 GRUB
-	txn.Add("modify /etc/default/grub",
+
+	txn.Add("modify GRUB_CMDLINE_LINUX_DEFAULT",
 		func() error {
-			// 读取、替换行
-			data := string(orig)
-			lines := strings.Split(data, "\n")
-			found := false
-			for i, l := range lines {
-				if strings.HasPrefix(l, "GRUB_CMDLINE_LINUX_DEFAULT") {
-					lines[i] = `GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=0"`
-					found = true
-				}
+			data := string(origGrub)
+			re := regexp.MustCompile(`(?m)^GRUB_CMDLINE_LINUX_DEFAULT=.*$`)
+			newLine := `GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=0"`
+
+			if re.MatchString(data) {
+				data = re.ReplaceAllString(data, newLine)
+			} else {
+				data += "\n" + newLine + "\n"
 			}
-			if !found {
-				lines = append(lines, `GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=0"`)
+
+			if err := os.WriteFile(grubFile, []byte(data), 0644); err != nil {
+				return fmt.Errorf("写入 grub 文件失败: %v", err)
 			}
-			if err := os.WriteFile(grubFile, []byte(strings.Join(lines, "\n")), 0644); err != nil {
-				return err
+
+			fmt.Println("[INFO] /etc/default/grub 已修改，执行 update-grub")
+			cmd := exec.Command("update-grub")
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("update-grub 执行失败: %v", err)
 			}
-			// 更新 grub 配置
-			if out, err := exec.Command("update-grub").CombinedOutput(); err != nil {
-				return fmt.Errorf("update-grub failed: %v, out: %s", err, out)
-			}
+			fmt.Println("[INFO] GRUB 更新完成")
 			return nil
 		},
 		func() error {
-			// 恢复原始 grub
-			if len(orig) == 0 {
-				// 无原始文件则不删除
-				return nil
+			if len(origGrub) > 0 {
+				if err := os.WriteFile(grubFile, origGrub, 0644); err != nil {
+					return fmt.Errorf("恢复 grub 文件失败: %v", err)
+				}
+				exec.Command("update-grub").Run()
 			}
-			_ = os.WriteFile(grubFile, orig, 0644)
-			exec.Command("update-grub").Run()
 			return nil
 		},
 	)
 
-	// initramfs script
+	// -------------------------------
+	// 2. initramfs 脚本
+	// -------------------------------
 	initPath := "/etc/initramfs-tools/scripts/init-top/mimo-msg"
 	origInit := []byte{}
 	if b, err := os.ReadFile(initPath); err == nil {
 		origInit = b
 	}
+
 	content := `#!/bin/sh
 echo ">>> Please wait, initializing MIMO Live Server (initramfs stage) <<<" > /dev/console
 `
+
 	txn.Add("add initramfs mimo-msg",
 		func() error {
 			if err := os.MkdirAll(filepath.Dir(initPath), 0755); err != nil {
@@ -77,7 +83,7 @@ echo ">>> Please wait, initializing MIMO Live Server (initramfs stage) <<<" > /d
 			return nil
 		},
 		func() error {
-			// 恢复或删除
+			// 回滚 initramfs 脚本
 			if len(origInit) > 0 {
 				_ = os.WriteFile(initPath, origInit, 0755)
 			} else {
@@ -87,5 +93,6 @@ echo ">>> Please wait, initializing MIMO Live Server (initramfs stage) <<<" > /d
 			return nil
 		},
 	)
+
 	return nil
 }

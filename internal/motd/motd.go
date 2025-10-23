@@ -52,3 +52,25 @@ func RegisterMOTDActions(txn *transaction.Transaction) error {
 	txn.Add("backup_and_clear_motd", do, undo)
 	return nil
 }
+
+// disableMotd removes all files under /etc/update-motd.d using pure Go
+func DisableMotd() error {
+	dir := "/etc/update-motd.d"
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Printf("[WARN] %s does not exist, skipping motd cleanup\n", dir)
+			return nil
+		}
+		return fmt.Errorf("failed to read %s: %v", dir, err)
+	}
+
+	for _, entry := range entries {
+		filePath := filepath.Join(dir, entry.Name())
+		if err := os.Remove(filePath); err != nil {
+			return fmt.Errorf("failed to remove %s: %v", filePath, err)
+		}
+	}
+	return nil
+}

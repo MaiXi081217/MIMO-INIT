@@ -27,6 +27,10 @@
     {
       "src": "/tmp/mimo-output/file/welcome.sh",
       "dst": "/etc/profile.d/welcome.sh"
+    },
+    {
+      "src": "/tmp/mimo-output/file/SPDK_for_MIMO",
+      "dst": "/usr/local/mimo"
     }
   ]
 }
