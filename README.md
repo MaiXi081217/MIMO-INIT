@@ -8,6 +8,11 @@
 
 其余系统不保证成功
 
+使用前需要安装go环境且安装以下工具
+```sh
+sudo apt install jq -y
+```
+
 使用`pack_resources.sh`来进行静态资源的压缩并构建可执行程序
 
 ```sh

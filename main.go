@@ -143,50 +143,84 @@ func runtgtUpdate() {
 		log.Fatalf("[ERROR] checking %s failed: %v", spdkSock, err)
 	}
 
-	// === Step 4: 读取旧版本 ===
-	mimoRoot := os.Getenv("MIMO_ROOT")
-	if mimoRoot == "" {
-		log.Fatalf("[ERROR] MIMO_ROOT environment variable not set")
-	}
-
-	oldVerPath := filepath.Join(mimoRoot, "VERSION.json")
-	oldData, err := os.ReadFile(oldVerPath)
+	// === Step 4: 读取 config.json 中的 src/dst 路径 ===
+	configPath := filepath.Join(destDir, "config.json")
+	data, err := os.ReadFile(configPath)
 	if err != nil {
-		log.Fatalf("[ERROR] failed to read %s: %v", oldVerPath, err)
+		log.Fatalf("[ERROR] reading config.json failed: %v", err)
 	}
 
-	var oldVer map[string]interface{}
-	if err := json.Unmarshal(oldData, &oldVer); err != nil {
-		log.Fatalf("[ERROR] parsing old VERSION.json failed: %v", err)
+	var cfg struct {
+		Src string `json:"src"`
+		Dst string `json:"dst"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		log.Fatalf("[ERROR] parsing config.json failed: %v", err)
 	}
 
-	oldSPDK, _ := oldVer["SPDK_for_MIMO"].(string)
-	if oldSPDK == "" {
-		oldSPDK = "(unknown)"
+	if cfg.Src == "" || cfg.Dst == "" {
+		log.Fatalf("[ERROR] invalid config.json: missing src/dst fields")
 	}
 
-	// === Step 5: 读取新版本 ===
-	newVerPath := filepath.Join(destDir, "VERSION.json")
-	newData, err := os.ReadFile(newVerPath)
+	// === Step 5: 执行版本对比 ===
+	srcVerPath := filepath.Join(cfg.Src, "VERSION.json")
+	dstVerPath := filepath.Join(cfg.Dst, "SPDK_for_MIMO", "VERSION.json")
+
+	readVer := func(path string) (map[string]interface{}, error) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		var v map[string]interface{}
+		if err := json.Unmarshal(data, &v); err != nil {
+			return nil, err
+		}
+		return v, nil
+	}
+
+	srcVer, err := readVer(srcVerPath)
 	if err != nil {
-		log.Fatalf("[ERROR] failed to read %s: %v", newVerPath, err)
+		log.Fatalf("[ERROR] failed to read new version file: %v", err)
 	}
 
-	var newVer map[string]interface{}
-	if err := json.Unmarshal(newData, &newVer); err != nil {
-		log.Fatalf("[ERROR] parsing new VERSION.json failed: %v", err)
+	dstVer, err := readVer(dstVerPath)
+	if err != nil {
+		fmt.Printf("[WARN] failed to read installed version file (%v), assuming fresh install\n", err)
+		dstVer = map[string]interface{}{}
 	}
 
-	newSPDK, _ := newVer["SPDK_for_MIMO"].(string)
-	if newSPDK == "" {
-		newSPDK = "(unknown)"
+	srcSPDK, _ := srcVer["SPDK_for_MIMO"].(string)
+	dstSPDK, _ := dstVer["SPDK_for_MIMO"].(string)
+	srcMIMO, _ := srcVer["MIMO"].(string)
+	dstMIMO, _ := dstVer["MIMO"].(string)
+
+	if srcSPDK == "" {
+		srcSPDK = "(unknown)"
+	}
+	if dstSPDK == "" {
+		dstSPDK = "(none)"
+	}
+	if srcMIMO == "" {
+		srcMIMO = "(unknown)"
+	}
+	if dstMIMO == "" {
+		dstMIMO = "(none)"
 	}
 
-	// === Step 6: 打印版本对比 ===
-	fmt.Println("===== SPDK Version Comparison =====")
-	fmt.Printf("Current (Installed): %s\n", oldSPDK)
-	fmt.Printf("New (Update File):  %s\n", newSPDK)
+	fmt.Println("===== Version Comparison =====")
+	fmt.Printf("Installed SPDK: %s\n", dstSPDK)
+	fmt.Printf("Update SPDK:    %s\n", srcSPDK)
+	fmt.Printf("Installed MIMO: %s\n", dstMIMO)
+	fmt.Printf("Update MIMO:    %s\n", srcMIMO)
 	fmt.Println("===================================")
+
+	if srcSPDK == dstSPDK && srcMIMO == dstMIMO {
+		fmt.Println("[INFO] Version unchanged, skip update.")
+		_ = os.RemoveAll(destDir)
+		return
+	}
+
+	fmt.Println("[INFO] Detected new version, proceed with update.")
 
 	// === Step 7: （后续可执行升级逻辑）===
 	fmt.Println("[INFO] Target update check complete. Ready to continue upgrade steps.")
