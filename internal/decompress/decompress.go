@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "embed"
 )
@@ -21,6 +22,9 @@ var embeddedHash []byte
 
 // ExtractResources extracts embedded resources into the target directory
 func ExtractResources(dest string) error {
+	dest = filepath.Clean(dest)
+	fmt.Println("INFO: extracting resources; this may take some time...")
+
 	reader := bytes.NewReader(embeddedResources)
 	gzr, err := gzip.NewReader(reader)
 	if err != nil {
@@ -30,13 +34,14 @@ func ExtractResources(dest string) error {
 
 	tr := tar.NewReader(gzr)
 
+	var skipped int
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("failed to read tar entry: %v", err)
+			return fmt.Errorf("failed to read archive: %v", err)
 		}
 
 		targetPath := filepath.Join(dest, hdr.Name)
@@ -46,7 +51,6 @@ func ExtractResources(dest string) error {
 			if err := os.MkdirAll(targetPath, 0755); err != nil {
 				return fmt.Errorf("failed to create directory: %v", err)
 			}
-			fmt.Printf("[INFO] Created directory: %s\n", targetPath)
 
 		case tar.TypeReg:
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
@@ -61,24 +65,27 @@ func ExtractResources(dest string) error {
 				return fmt.Errorf("failed to write file: %v", err)
 			}
 			f.Close()
-			fmt.Printf("[INFO] Extracted file: %s\n", targetPath)
 
 		case tar.TypeSymlink:
 			linkTarget := filepath.Join(dest, hdr.Linkname)
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
 				return fmt.Errorf("failed to create directory for symlink: %v", err)
 			}
-			os.Remove(targetPath) // remove existing file if any
+			_ = os.Remove(targetPath) // remove existing file if any
 			if err := os.Symlink(linkTarget, targetPath); err != nil {
 				return fmt.Errorf("failed to create symlink: %v", err)
 			}
-			fmt.Printf("[INFO] Created symlink: %s -> %s\n", targetPath, linkTarget)
 
 		default:
-			fmt.Printf("[WARN] Skipping unsupported type: %s\n", hdr.Name)
+			// unsupported entry type, count and continue
+			skipped++
 		}
 	}
 
+	if skipped > 0 {
+		fmt.Println("WARN: some archive entries were skipped")
+	}
+	fmt.Println("INFO: extraction completed")
 	return nil
 }
 
@@ -87,10 +94,10 @@ func VerifyHash() bool {
 	sum := sha256.Sum256(embeddedResources)
 	calculated := fmt.Sprintf("%x", sum[:])
 	expected := string(bytes.TrimSpace(embeddedHash))
-	if calculated != expected {
-		fmt.Printf("[ERROR] SHA256 mismatch! Calculated: %s, Expected: %s\n", calculated, expected)
+	if !strings.EqualFold(calculated, expected) {
+		fmt.Println("ERROR: resources verification failed")
 		return false
 	}
-	fmt.Println("[INFO] SHA256 verified successfully")
+	fmt.Println("INFO: resources verified")
 	return true
 }

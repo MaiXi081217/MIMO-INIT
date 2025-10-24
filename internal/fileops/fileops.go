@@ -1,3 +1,9 @@
+/*
+Changes:
+- Implement CopyFile and CopyDir with proper path cleaning and mode preservation.
+- Provide RegisterCopyActions to register copy/undo actions into a Transaction.
+- Purpose: make file copy operations reusable and transactional.
+*/
 package fileops
 
 import (
@@ -31,105 +37,126 @@ func LoadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// CopyFile copies a single file from src to dst, creating parent dirs and preserving file mode.
+func CopyFile(src, dst string) error {
+	src = filepath.Clean(src)
+	dst = filepath.Clean(dst)
+
+	sfi, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("stat src %s: %w", src, err)
+	}
+	if sfi.IsDir() {
+		return fmt.Errorf("source %s is a directory", src)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return fmt.Errorf("mkdir dst dir %s: %w", filepath.Dir(dst), err)
+	}
+
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open src %s: %w", src, err)
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("create dst %s: %w", dst, err)
+	}
+	defer func() {
+		out.Close()
+	}()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return fmt.Errorf("copy %s -> %s: %w", src, dst, err)
+	}
+
+	if err := out.Chmod(sfi.Mode()); err != nil {
+		// not fatal, but propagate
+		return fmt.Errorf("chmod %s: %w", dst, err)
+	}
+	return nil
+}
+
+// CopyDir recursively copies src directory to dst.
+func CopyDir(src, dst string) error {
+	src = filepath.Clean(src)
+	dst = filepath.Clean(dst)
+
+	sfi, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("stat src %s: %w", src, err)
+	}
+	if !sfi.IsDir() {
+		return fmt.Errorf("source %s is not a directory", src)
+	}
+
+	err = filepath.Walk(src, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			if err := os.MkdirAll(target, info.Mode()); err != nil {
+				return err
+			}
+			return nil
+		}
+		// file
+		if err := CopyFile(path, target); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("copydir %s -> %s: %w", src, dst, err)
+	}
+	return nil
+}
+
+// RegisterCopyActions registers copy actions described by cfg into txn.
+// Each action Do performs copy; Undo removes the destination.
 func RegisterCopyActions(txn *transaction.Transaction, cfg *Config) error {
+	if txn == nil || cfg == nil {
+		return fmt.Errorf("nil txn or cfg")
+	}
 	for _, m := range cfg.FileMappings {
-		src := m.Src
-		dst := m.Dst
+		src := filepath.Clean(m.Src)
+		dst := filepath.Clean(m.Dst)
+		name := fmt.Sprintf("copy %s -> %s", src, dst)
 
-		backupPath := ""
-		if _, err := os.Stat(dst); err == nil {
-			backupPath = fmt.Sprintf("%s.bak.%d", dst, os.Getpid())
-			os.MkdirAll(filepath.Dir(backupPath), 0755)
-			if err := os.Rename(dst, backupPath); err != nil {
-				return fmt.Errorf("备份目标失败: %v", err)
-			}
+		// capture variables for closure
+		s, d := src, dst
+		action := &transaction.Action{
+			Name: name,
+			Do: func() error {
+				info, err := os.Stat(s)
+				if err != nil {
+					return fmt.Errorf("stat source %s: %w", s, err)
+				}
+				// remove existing dst first to ensure clean replace
+				_ = os.RemoveAll(d)
+				if info.IsDir() {
+					return CopyDir(s, d)
+				}
+				return CopyFile(s, d)
+			},
+			Undo: func() error {
+				// best-effort remove destination
+				if err := os.RemoveAll(d); err != nil {
+					return fmt.Errorf("undo remove %s: %w", d, err)
+				}
+				return nil
+			},
 		}
-
-		do := func() error {
-			info, err := os.Stat(src)
-			if err != nil {
-				return fmt.Errorf("source not found: %s", src)
-			}
-
-			fmt.Printf("[INFO] 正在复制文件: %s -> %s\n", src, dst)
-			os.MkdirAll(filepath.Dir(dst), 0755)
-
-			if info.IsDir() {
-				return CopyDir(src, dst)
-			}
-			return CopyFile(src, dst)
-		}
-
-		undo := func() error {
-			if backupPath != "" {
-				_ = os.RemoveAll(dst)
-				return os.Rename(backupPath, dst)
-			}
-			return os.RemoveAll(dst)
-		}
-
-		txn.Add(fmt.Sprintf("copy %s -> %s", src, dst), do, undo)
+		txn.Add(action)
 	}
 	return nil
 }
 
 // ========== 辅助函数 ==========
-
-// 复制单个文件，并赋予可执行权限
-func CopyFile(src, dst string) error {
-	sf, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer sf.Close()
-
-	df, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-	defer df.Close()
-
-	if _, err := io.Copy(df, sf); err != nil {
-		return err
-	}
-
-	// 给所有文件加可执行权限
-	if err := os.Chmod(dst, 0755); err != nil {
-		return fmt.Errorf("设置执行权限失败: %v", err)
-	}
-
-	return nil
-}
-
-// 递归复制整个目录
-func CopyDir(src, dst string) error {
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(dst, 0755); err != nil {
-		return err
-	}
-
-	for _, entry := range entries {
-		srcPath := filepath.Join(src, entry.Name())
-		dstPath := filepath.Join(dst, entry.Name())
-
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-
-		if info.IsDir() {
-			if err := CopyDir(srcPath, dstPath); err != nil {
-				return err
-			}
-		} else {
-			if err := CopyFile(srcPath, dstPath); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}

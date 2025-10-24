@@ -1,76 +1,116 @@
+/*
+Changes:
+- RegisterMOTDActions: add a transaction action that backs up /etc/update-motd.d and clears it.
+- DisableMotd: helper to remove files under /etc/update-motd.d.
+- Purpose: keep MOTD actions transactional and reversible.
+*/
 package motd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
-	"time"
 
 	"resourcemgr/internal/transaction"
 )
 
-// RegisterMOTDActions 注册备份并清空 /etc/update-motd.d
-func RegisterMOTDActions(txn *transaction.Transaction) error {
-	srcDir := "/etc/update-motd.d"
-	backupDir := fmt.Sprintf("/root/motd_backup_%d", time.Now().Unix())
+const (
+	motdDir     = "/etc/update-motd.d"
+	motdBakRoot = "/var/lib/mimo/motd-backup"
+)
 
-	do := func() error {
-		if _, err := os.Stat(srcDir); os.IsNotExist(err) {
-			// 不存在视为成功
-			return nil
-		}
-		if err := os.MkdirAll(backupDir, 0700); err != nil {
-			return err
-		}
-		entries, err := os.ReadDir(srcDir)
-		if err != nil {
-			return err
-		}
-		for _, e := range entries {
-			src := filepath.Join(srcDir, e.Name())
-			dst := filepath.Join(backupDir, e.Name())
-			if err := os.Rename(src, dst); err != nil {
-				return err
+// RegisterMOTDActions registers an action that backs up motd scripts and clears the directory.
+// Undo restores from backup.
+func RegisterMOTDActions(txn *transaction.Transaction) error {
+	if txn == nil {
+		return fmt.Errorf("nil transaction")
+	}
+
+	action := &transaction.Action{
+		Name: "motd backup and disable",
+		Do: func() error {
+			// ensure backup dir
+			if err := os.MkdirAll(motdBakRoot, 0755); err != nil {
+				return fmt.Errorf("mkdir backup: %w", err)
 			}
-		}
-		return nil
-	}
-	undo := func() error {
-		// 恢复备份
-		entries, err := os.ReadDir(backupDir)
-		if err != nil {
+			entries, err := os.ReadDir(motdDir)
+			if err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("read motd dir: %w", err)
+			}
+			for _, e := range entries {
+				src := filepath.Join(motdDir, e.Name())
+				dst := filepath.Join(motdBakRoot, e.Name())
+				// copy file
+				if err := copyFile(src, dst); err != nil {
+					return err
+				}
+				// remove original
+				if err := os.Remove(src); err != nil {
+					return err
+				}
+			}
 			return nil
-		}
-		for _, e := range entries {
-			src := filepath.Join(backupDir, e.Name())
-			dst := filepath.Join(srcDir, e.Name())
-			_ = os.Rename(src, dst)
-		}
-		_ = os.RemoveAll(backupDir)
-		return nil
+		},
+		Undo: func() error {
+			entries, err := os.ReadDir(motdBakRoot)
+			if err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("read backup: %w", err)
+			}
+			for _, e := range entries {
+				src := filepath.Join(motdBakRoot, e.Name())
+				dst := filepath.Join(motdDir, e.Name())
+				if err := os.MkdirAll(motdDir, 0755); err != nil {
+					return err
+				}
+				if err := copyFile(src, dst); err != nil {
+					return err
+				}
+			}
+			// best-effort: leave backup in place
+			return nil
+		},
 	}
-	txn.Add("backup_and_clear_motd", do, undo)
+
+	txn.Add(action)
 	return nil
 }
 
-// disableMotd removes all files under /etc/update-motd.d using pure Go
+// DisableMotd removes all files in /etc/update-motd.d
 func DisableMotd() error {
-	dir := "/etc/update-motd.d"
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Printf("[WARN] %s does not exist, skipping motd cleanup\n", dir)
-			return nil
+	entries, err := os.ReadDir(motdDir)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read motd dir: %w", err)
+	}
+	for _, e := range entries {
+		p := filepath.Join(motdDir, e.Name())
+		if err := os.RemoveAll(p); err != nil {
+			return fmt.Errorf("remove %s: %w", p, err)
 		}
-		return fmt.Errorf("failed to read %s: %v", dir, err)
+	}
+	return nil
+}
+
+// small helper to copy file content
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
 	}
 
-	for _, entry := range entries {
-		filePath := filepath.Join(dir, entry.Name())
-		if err := os.Remove(filePath); err != nil {
-			return fmt.Errorf("failed to remove %s: %v", filePath, err)
-		}
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
 	}
 	return nil
 }

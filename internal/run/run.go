@@ -18,30 +18,42 @@ import (
 )
 
 const (
-	tmpDir          = "/tmp/mimo-output"
-	spdkSock        = "/var/tmp/spdk.sock"
+	tmpDir   = "/tmp/mimo-output"
+	spdkSock = "/var/tmp/spdk.sock"
 )
 
 func RunPkgDep() {
 	mimoRoot := env.EnsureMimoRoot()
-	pkgdepScript := filepath.Join(mimoRoot, "scripts", "pkgdep.sh")
 
-	if _, err := os.Stat(pkgdepScript); os.IsNotExist(err) {
-		fmt.Printf("[WARN] pkgdep.sh script not found at %s, skipping dependency installation\n", pkgdepScript)
+	// look for pkgdep script in a few locations (prefer unpacked resources)
+	candidates := []string{
+		filepath.Join(tmpDir, "file", "SPDK_for_MIMO", "scripts", "pkgdep.sh"), // unpacked package (first run)
+		filepath.Join(mimoRoot, "scripts", "pkgdep.sh"),                        // installed location (later runs)
+	}
+
+	var pkgdepScript string
+	for _, p := range candidates {
+		p = filepath.Clean(p)
+		if _, err := os.Stat(p); err == nil {
+			pkgdepScript = p
+			break
+		}
+	}
+
+	if pkgdepScript == "" {
+		fmt.Println("WARN: dependency script not found, skipping")
 		return
 	}
 
-	fmt.Println("[INFO] Starting package dependency installation...")
-	fmt.Println("[INFO] This may take a while depending on your network and system configuration.")
-
+	fmt.Println("INFO: installing package dependencies; this may take some time...")
 	cmd := exec.Command("bash", pkgdepScript)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		log.Printf("[ERROR] pkgdep.sh execution failed: %v\n", err)
+		log.Printf("WARN: dependency installation failed")
 	} else {
-		fmt.Println("[INFO] Package dependencies installed successfully")
+		fmt.Println("INFO: dependencies installed")
 	}
 }
 
@@ -50,73 +62,72 @@ func RunTransaction(cfg *fileops.Config) {
 	defer txn.Cleanup()
 
 	if err := motd.RegisterMOTDActions(txn); err != nil {
-		log.Fatalf("[ERROR] registering MOTD actions failed: %v", err)
+		log.Fatalf("ERROR: setup MOTD actions failed")
 	}
 
 	if err := fileops.RegisterCopyActions(txn, cfg); err != nil {
-		log.Fatalf("[ERROR] registering copy actions failed: %v", err)
+		log.Fatalf("ERROR: setup file copy actions failed")
 	}
 
 	if err := grub.RegisterGrubAndInitActions(txn); err != nil {
-		log.Fatalf("[ERROR] registering GRUB actions failed: %v", err)
+		log.Fatalf("ERROR: setup GRUB actions failed")
 	}
 
 	if err := txn.Run(); err != nil {
-		log.Fatalf("[ERROR] executing transaction failed: %v", err)
+		log.Fatalf("ERROR: executing update actions failed")
 	}
 }
 
 func RunUpdate() {
-	if os.Geteuid() != 0 {
-		log.Fatalf("[ERROR] must run as root")
-	}
+	env.MustBeRoot()
 
 	env.EnsureMimoRoot()
+	cleanTmp := filepath.Clean(tmpDir)
+	defer func() {
+		_ = os.RemoveAll(cleanTmp)
+	}()
 
-	if err := decompress.ExtractResources(tmpDir); err != nil {
-		log.Fatalf("[ERROR] extracting resources failed: %v", err)
+	if err := decompress.ExtractResources(cleanTmp); err != nil {
+		log.Fatalf("ERROR: extracting resources failed")
 	}
 	if ok := decompress.VerifyHash(); !ok {
-		log.Fatalf("[ERROR] SHA256 verification failed")
+		log.Fatalf("ERROR: resource verification failed")
 	}
 
 	RunPkgDep()
 
-	configPath := filepath.Join(tmpDir, "config.json")
+	configPath := filepath.Join(cleanTmp, "config.json")
 	cfg := env.LoadFileOpsConfig(configPath)
 
 	RunTransaction(cfg)
 
 	if err := systemd.EnableServices(cfg); err != nil {
-		log.Fatalf("[ERROR] enabling systemd services failed: %v", err)
+		log.Fatalf("ERROR: enabling system services failed")
 	}
 
 	if err := system.DisableCloudInit(); err != nil {
-		log.Fatalf("[ERROR] disabling cloud-init failed: %v", err)
-	}
-
-	if err := os.RemoveAll(tmpDir); err != nil {
-		fmt.Printf("[WARN] failed to delete temporary directory %s: %v\n", tmpDir, err)
+		log.Fatalf("ERROR: disabling cloud-init failed")
 	}
 }
 
-// ----------------- Target Update Main -----------------
 func RuntgtUpdate() {
-	if os.Geteuid() != 0 {
-		log.Fatalf("[ERROR] must run as root")
-	}
+	env.MustBeRoot()
 
 	env.EnsureMimoRoot()
+	cleanTmp := filepath.Clean(tmpDir)
+	defer func() {
+		_ = os.RemoveAll(cleanTmp)
+	}()
 
-	fmt.Println("[INFO] Extracting resource package...")
-	if err := decompress.ExtractResources(tmpDir); err != nil {
-		log.Fatalf("[ERROR] extracting resources failed: %v", err)
+	fmt.Println("INFO: extracting package...")
+	if err := decompress.ExtractResources(cleanTmp); err != nil {
+		log.Fatalf("ERROR: extracting resources failed")
 	}
 	if ok := decompress.VerifyHash(); !ok {
-		log.Fatalf("[ERROR] SHA256 verification failed")
+		log.Fatalf("ERROR: resource verification failed")
 	}
 
-	configPath := filepath.Join(tmpDir, "config.json")
+	configPath := filepath.Join(cleanTmp, "config.json")
 	cfg := env.LoadVersionConfig(configPath)
 
 	newVerFile := cfg.Version[0].Src
@@ -124,65 +135,62 @@ func RuntgtUpdate() {
 	oldVer := env.ReadMimoVersion(oldVerFile)
 	newVer := env.ReadMimoVersion(newVerFile)
 
-	fmt.Printf("[INFO] Installed MIMO version: %s\n", oldVer)
-	fmt.Printf("[INFO] New MIMO version      : %s\n", newVer)
+	fmt.Printf("INFO: installed version: %s\n", oldVer)
+	fmt.Printf("INFO: new version      : %s\n", newVer)
 
-	if !env.ConfirmPrompt("[PROMPT] Do you want to update? [y/N]: ") {
-		fmt.Println("[INFO] Update aborted by user.")
-		_ = os.RemoveAll(tmpDir)
+	if !env.ConfirmPrompt("Proceed with update? [y/N]: ") {
+		fmt.Println("INFO: update cancelled")
 		return
 	}
 
-	// Step: Stop SPDK and save config
-	if _, err := os.Stat(spdkSock); err == nil {
-		fmt.Println("[INFO] Detected running SPDK instance at", spdkSock)
-		fmt.Println("[INFO] SPDK is currently running. I/O must be stopped for safe update.")
-		if env.ConfirmPrompt("[PROMPT] Do you want to stop SPDK processes now? [y/N]: ") {
+	// Stop MIMO and save config
+	cleanSock := filepath.Clean(spdkSock)
+	if _, err := os.Stat(cleanSock); err == nil {
+		fmt.Println("INFO: detected running MIMO instance")
+		if env.ConfirmPrompt("Stop MIMO now? [y/N]: ") {
 			spdk.SaveSpdkConfigAndGetCommand()
-			fmt.Println("[INFO] SPDK stopped and configuration saved.")
+			fmt.Println("INFO: MIMO stopped")
 		} else {
-			fmt.Println("[ABORTED] Please stop I/O operations before updating target.")
+			fmt.Println("INFO: please stop I/O before updating")
 			return
 		}
 	} else if !os.IsNotExist(err) {
-		log.Fatalf("[ERROR] checking %s failed: %v", spdkSock, err)
+		log.Fatalf("ERROR: failed to check socket")
 	}
 
-	// Step: Delete old and copy new based on file_mappings
-	fmt.Println("[INFO] Copying files and directories from file_mappings...")
+	// Copy files according to mappings
+	fmt.Println("INFO: applying file mappings...")
 
-	fileOpsConfigPath := filepath.Join(tmpDir, "config.json")
+	fileOpsConfigPath := filepath.Join(cleanTmp, "config.json")
 	fileOpsCfg := env.LoadFileOpsConfig(fileOpsConfigPath)
 
 	for _, mapping := range fileOpsCfg.FileMappings {
 		srcPath := mapping.Src
 		dstPath := mapping.Dst
 
-		fmt.Printf("[INFO] Processing mapping: %s -> %s\n", srcPath, dstPath)
+		//fmt.Printf("INFO: %s -> %s\n", srcPath, dstPath)
 
 		fi, err := os.Stat(srcPath)
 		if err != nil {
-			log.Fatalf("[ERROR] cannot stat source path %s: %v", srcPath, err)
+			log.Fatalf("ERROR: source missing")
 		}
 
-		// 删除目标路径
+		// remove old target
 		if err := os.RemoveAll(dstPath); err != nil {
-			log.Fatalf("[ERROR] failed to remove old path %s: %v", dstPath, err)
+			log.Fatalf("ERROR: failed to remove old target")
 		}
 
 		if fi.IsDir() {
-			fmt.Printf("[INFO] Copying directory %s to %s\n", srcPath, dstPath)
 			if err := fileops.CopyDir(srcPath, dstPath); err != nil {
-				log.Fatalf("[ERROR] failed to copy directory: %v", err)
+				log.Fatalf("ERROR: failed to copy directory")
 			}
 		} else {
-			fmt.Printf("[INFO] Copying file %s to %s\n", srcPath, dstPath)
 			if err := fileops.CopyFile(srcPath, dstPath); err != nil {
-				log.Fatalf("[ERROR] failed to copy file: %v", err)
+				log.Fatalf("ERROR: failed to copy file")
 			}
 		}
 	}
 
-	// Step: Restart SPDK with saved config
+	// Restart MIMO with saved config
 	spdk.RestartSpdkWithSavedConfig()
 }

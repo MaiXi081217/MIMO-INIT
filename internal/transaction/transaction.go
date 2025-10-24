@@ -1,6 +1,9 @@
 package transaction
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Action 定义单个事务动作
 type Action struct {
@@ -17,44 +20,58 @@ type Transaction struct {
 
 // New 创建事务
 func New() *Transaction {
-	return &Transaction{}
+	return &Transaction{
+		actions:  make([]*Action, 0),
+		executed: make([]*Action, 0),
+	}
 }
 
 // Add 添加动作
-func (t *Transaction) Add(name string, do, undo func() error) {
-	t.actions = append(t.actions, &Action{
-		Name: name,
-		Do:   do,
-		Undo: undo,
-	})
+func (t *Transaction) Add(a *Action) {
+	if a == nil {
+		return
+	}
+	t.actions = append(t.actions, a)
 }
 
-// Run 执行事务
+// Run 执行事务，遇到错误则回滚已执行的动作并返回错误
 func (t *Transaction) Run() error {
-	t.executed = []*Action{}
-	for _, act := range t.actions {
-		if err := act.Do(); err != nil {
-			// 出错回滚
-			t.Rollback()
-			return fmt.Errorf("执行动作 '%s' 失败: %v", act.Name, err)
+	t.executed = t.executed[:0]
+	for _, a := range t.actions {
+		if a == nil || a.Do == nil {
+			continue
 		}
-		t.executed = append(t.executed, act)
+		if err := a.Do(); err != nil {
+			// 回滚已执行动作
+			_ = t.Rollback()
+			return fmt.Errorf("action %q failed: %w", a.Name, err)
+		}
+		t.executed = append(t.executed, a)
 	}
 	return nil
 }
 
-// Rollback 回滚已执行的动作
-func (t *Transaction) Rollback() {
+// Rollback 回滚已执行的动作（按相反顺序），返回合并错误或 nil
+func (t *Transaction) Rollback() error {
+	var errs []string
 	for i := len(t.executed) - 1; i >= 0; i-- {
-		act := t.executed[i]
-		if err := act.Undo(); err != nil {
-			fmt.Printf("回滚动作 '%s' 失败: %v\n", act.Name, err)
+		a := t.executed[i]
+		if a == nil || a.Undo == nil {
+			continue
+		}
+		if err := a.Undo(); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", a.Name, err))
 		}
 	}
-	t.executed = nil
+	// 清空已执行列表以避免重复回滚
+	t.executed = t.executed[:0]
+	if len(errs) > 0 {
+		return fmt.Errorf("rollback errors: %s", strings.Join(errs, "; "))
+	}
+	return nil
 }
 
-// Cleanup 清理事务（未执行的动作清理）
+// Cleanup 清理事务内部状态（释放引用）
 func (t *Transaction) Cleanup() {
 	t.actions = nil
 	t.executed = nil

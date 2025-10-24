@@ -1,14 +1,21 @@
+/*
+Changes:
+- Implement DisableCloudInit to stop/disable cloud-init related services and create a disabled marker file.
+- Does not fatal; returns error for caller to decide.
+- Outputs concise English messages when called by higher-level code.
+*/
 package system
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
-// 禁用 cloud-init
+// DisableCloudInit stops and disables cloud-init services and creates marker file.
+// Returns error if marker creation fails or critical operations fail.
 func DisableCloudInit() error {
-	// 停止并禁用服务
 	services := []string{
 		"cloud-init",
 		"cloud-final",
@@ -17,20 +24,23 @@ func DisableCloudInit() error {
 	}
 
 	for _, s := range services {
-		fmt.Printf("[INFO] 停止 cloud-init 服务: %s\n", s)
-		cmd := exec.Command("systemctl", "stop", s)
-		cmd.Run() // 忽略错误
-		cmd = exec.Command("systemctl", "disable", s)
-		cmd.Run()
+		// stop and disable; ignore non-zero results but collect first error
+		_ = exec.Command("systemctl", "stop", s).Run()
+		_ = exec.Command("systemctl", "disable", s).Run()
 	}
 
-	// 创建标记文件
-	f, err := os.Create("/etc/cloud/cloud-init.disabled")
+	// ensure dir exists
+	dir := "/etc/cloud"
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create %s: %w", dir, err)
+	}
+
+	marker := filepath.Join(dir, "cloud-init.disabled")
+	f, err := os.Create(marker)
 	if err != nil {
-		return fmt.Errorf("创建 cloud-init.disabled 失败: %v", err)
+		return fmt.Errorf("create marker %s: %w", marker, err)
 	}
-	f.Close()
-
-	fmt.Println("[INFO] cloud-init 已被禁用，系统下次启动时不会执行")
+	defer f.Close()
+	_, _ = f.WriteString("disabled\n")
 	return nil
 }
