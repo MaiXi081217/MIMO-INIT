@@ -61,7 +61,7 @@ fi
 # 打包资源文件
 # -------------------------------
 echo " 正在打包资源文件..."
-tar -czf "$OUT_FILE" "$SRC_DIR" "$CONFIG_FILE"
+tar -chzf "$OUT_FILE" "$SRC_DIR" "$CONFIG_FILE"
 echo " 打包完成：$OUT_FILE"
 
 # -------------------------------

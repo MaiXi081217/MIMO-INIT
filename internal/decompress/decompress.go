@@ -10,26 +10,21 @@ import (
 	"os"
 	"path/filepath"
 
-	// -------------------------------
-	// 嵌入资源
-	// -------------------------------
 	_ "embed"
 )
 
 //go:embed resources.tar.gz
 var embeddedResources []byte
 
-// SHA256 值直接嵌入
-//
 //go:embed resources.sha256
 var embeddedHash []byte
 
-// ExtractResources 解压到目标目录
+// ExtractResources extracts embedded resources into the target directory
 func ExtractResources(dest string) error {
 	reader := bytes.NewReader(embeddedResources)
 	gzr, err := gzip.NewReader(reader)
 	if err != nil {
-		return fmt.Errorf("创建 gzip reader 失败: %v", err)
+		return fmt.Errorf("failed to create gzip reader: %v", err)
 	}
 	defer gzr.Close()
 
@@ -41,37 +36,61 @@ func ExtractResources(dest string) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("读取 tar 文件失败: %v", err)
+			return fmt.Errorf("failed to read tar entry: %v", err)
 		}
 
 		targetPath := filepath.Join(dest, hdr.Name)
-		if hdr.Typeflag == tar.TypeDir {
-			os.MkdirAll(targetPath, 0755)
-			continue
-		}
 
-		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-			return fmt.Errorf("创建目录失败: %v", err)
-		}
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(targetPath, 0755); err != nil {
+				return fmt.Errorf("failed to create directory: %v", err)
+			}
+			fmt.Printf("[INFO] Created directory: %s\n", targetPath)
 
-		f, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-		if err != nil {
-			return fmt.Errorf("创建文件失败: %v", err)
-		}
-
-		if _, err := io.Copy(f, tr); err != nil {
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+				return fmt.Errorf("failed to create parent directory: %v", err)
+			}
+			f, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode))
+			if err != nil {
+				return fmt.Errorf("failed to create file: %v", err)
+			}
+			if _, err := io.Copy(f, tr); err != nil {
+				f.Close()
+				return fmt.Errorf("failed to write file: %v", err)
+			}
 			f.Close()
-			return fmt.Errorf("写入文件失败: %v", err)
+			fmt.Printf("[INFO] Extracted file: %s\n", targetPath)
+
+		case tar.TypeSymlink:
+			linkTarget := filepath.Join(dest, hdr.Linkname)
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+				return fmt.Errorf("failed to create directory for symlink: %v", err)
+			}
+			os.Remove(targetPath) // remove existing file if any
+			if err := os.Symlink(linkTarget, targetPath); err != nil {
+				return fmt.Errorf("failed to create symlink: %v", err)
+			}
+			fmt.Printf("[INFO] Created symlink: %s -> %s\n", targetPath, linkTarget)
+
+		default:
+			fmt.Printf("[WARN] Skipping unsupported type: %s\n", hdr.Name)
 		}
-		f.Close()
 	}
+
 	return nil
 }
 
-// VerifyHash 校验嵌入资源 SHA256
+// VerifyHash verifies the SHA256 of the embedded resources
 func VerifyHash() bool {
 	sum := sha256.Sum256(embeddedResources)
 	calculated := fmt.Sprintf("%x", sum[:])
 	expected := string(bytes.TrimSpace(embeddedHash))
-	return calculated == expected
+	if calculated != expected {
+		fmt.Printf("[ERROR] SHA256 mismatch! Calculated: %s, Expected: %s\n", calculated, expected)
+		return false
+	}
+	fmt.Println("[INFO] SHA256 verified successfully")
+	return true
 }

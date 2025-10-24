@@ -32,5 +32,13 @@
       "src": "/tmp/mimo-output/file/SPDK_for_MIMO",
       "dst": "/usr/local/mimo"
     }
+  ],
+  "version": [
+    {
+      "src": "/tmp/mimo-output/file/SPDK_for_MIMO/VERSION.json"
+    },
+    {
+      "dst": "/usr/local/mimo/VERSION.json"
+    }
   ]
 }

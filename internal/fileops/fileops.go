@@ -55,9 +55,9 @@ func RegisterCopyActions(txn *transaction.Transaction, cfg *Config) error {
 			os.MkdirAll(filepath.Dir(dst), 0755)
 
 			if info.IsDir() {
-				return copyDir(src, dst)
+				return CopyDir(src, dst)
 			}
-			return copyFile(src, dst)
+			return CopyFile(src, dst)
 		}
 
 		undo := func() error {
@@ -75,8 +75,8 @@ func RegisterCopyActions(txn *transaction.Transaction, cfg *Config) error {
 
 // ========== 辅助函数 ==========
 
-// 复制单个文件
-func copyFile(src, dst string) error {
+// 复制单个文件，并赋予可执行权限
+func CopyFile(src, dst string) error {
 	sf, err := os.Open(src)
 	if err != nil {
 		return err
@@ -93,19 +93,16 @@ func copyFile(src, dst string) error {
 		return err
 	}
 
-	// 自动加执行权限
-	ext := filepath.Ext(dst)
-	if ext == ".sh" || ext == ".service" {
-		if err := os.Chmod(dst, 0755); err != nil {
-			return fmt.Errorf("设置执行权限失败: %v", err)
-		}
+	// 给所有文件加可执行权限
+	if err := os.Chmod(dst, 0755); err != nil {
+		return fmt.Errorf("设置执行权限失败: %v", err)
 	}
 
 	return nil
 }
 
 // 递归复制整个目录
-func copyDir(src, dst string) error {
+func CopyDir(src, dst string) error {
 	entries, err := os.ReadDir(src)
 	if err != nil {
 		return err
@@ -125,11 +122,11 @@ func copyDir(src, dst string) error {
 		}
 
 		if info.IsDir() {
-			if err := copyDir(srcPath, dstPath); err != nil {
+			if err := CopyDir(srcPath, dstPath); err != nil {
 				return err
 			}
 		} else {
-			if err := copyFile(srcPath, dstPath); err != nil {
+			if err := CopyFile(srcPath, dstPath); err != nil {
 				return err
 			}
 		}

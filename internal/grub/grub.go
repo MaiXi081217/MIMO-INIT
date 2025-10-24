@@ -10,7 +10,7 @@ import (
 	"resourcemgr/internal/transaction"
 )
 
-// RegisterGrubAndInitActions 将 GRUB 修改和 initramfs 脚本加入事务
+// RegisterGrubAndInitActions 将 GRUB 修改和 initramfs 脚本加入事务，GRUB 静默启动，initramfs 保留提示
 func RegisterGrubAndInitActions(txn *transaction.Transaction) error {
 	// -------------------------------
 	// 1. GRUB 修改
@@ -25,7 +25,7 @@ func RegisterGrubAndInitActions(txn *transaction.Transaction) error {
 		func() error {
 			data := string(origGrub)
 			re := regexp.MustCompile(`(?m)^GRUB_CMDLINE_LINUX_DEFAULT=.*$`)
-			newLine := `GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=0"`
+			newLine := `GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=0 systemd.show_status=0"`
 
 			if re.MatchString(data) {
 				data = re.ReplaceAllString(data, newLine)
@@ -39,8 +39,8 @@ func RegisterGrubAndInitActions(txn *transaction.Transaction) error {
 
 			fmt.Println("[INFO] /etc/default/grub 已修改，执行 update-grub")
 			cmd := exec.Command("update-grub")
-			if err := cmd.Run(); err != nil {
-				return fmt.Errorf("update-grub 执行失败: %v", err)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("update-grub 执行失败: %v, out: %s", err, out)
 			}
 			fmt.Println("[INFO] GRUB 更新完成")
 			return nil
@@ -57,7 +57,7 @@ func RegisterGrubAndInitActions(txn *transaction.Transaction) error {
 	)
 
 	// -------------------------------
-	// 2. initramfs 脚本
+	// 2. initramfs 脚本（保留初始化提示信息）
 	// -------------------------------
 	initPath := "/etc/initramfs-tools/scripts/init-top/mimo-msg"
 	origInit := []byte{}
