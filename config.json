@@ -31,6 +31,14 @@
     {
       "src": "/tmp/mimo-output/file/SPDK_for_MIMO",
       "dst": "/usr/local/mimo"
+    },
+    {
+      "src": "/tmp/mimo-output/file/os-release",
+      "dst": "/etc/os-release"
+    },
+    {
+      "src": "/tmp/mimo-output/file/lsb-release",
+      "dst": "/etc/lsb-release"
     }
   ],
   "version": [
