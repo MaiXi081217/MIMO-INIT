@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"resourcemgr/internal/env"
+	"mimo/internal/env"
 	"strconv"
 	"strings"
 )

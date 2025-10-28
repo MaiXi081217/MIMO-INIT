@@ -8,7 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"resourcemgr/internal/fileops"
+	"mimo/internal/fileops"
 	"strings"
 )
 

@@ -12,7 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"resourcemgr/internal/transaction"
+	"mimo/internal/transaction"
 )
 
 const (

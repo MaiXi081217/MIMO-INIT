@@ -1,37 +1,16 @@
 package main
 
 import (
-	"flag"
-	"fmt"
-	"resourcemgr/internal/run"
+	cmd "mimo/cmd"
+	_ "mimo/rpclient/init"
+	_ "mimo/rpclient/rpc"
 )
 
 func main() {
-	help   := flag.Bool("help", false, "Show help message")
-	update := flag.Bool("sys", false, "System update mode")
-	tgt    := flag.Bool("target", false, "Target update mode")
+	// 启用命令自动补全
+	cmd.RootCmd.CompletionOptions.DisableDefaultCmd = false
+	cmd.RootCmd.SuggestionsMinimumDistance = 1
 
-	flag.Parse()
-
-	if *help {
-		fmt.Println(`mimo-update: One-step MIMO system resource updater
-Usage:
-	mimo-update [options]
-Options:
-	--help   Show help message
-	--sys    Execute system update
-	--target Execute target update`)
-		return
-	}
-
-	if *update {
-		run.RunUpdate()
-		return
-	}
-	if *tgt {
-		run.RuntgtUpdate()
-		return
-	}
-
-	fmt.Println("Specify one of the options: -help")
+	// 执行根命令
+	cmd.Execute()
 }

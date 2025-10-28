@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"resourcemgr/internal/fileops"
+	"mimo/internal/fileops"
 )
 
 func EnableServices(cfg *fileops.Config) error {

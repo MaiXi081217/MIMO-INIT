@@ -17,7 +17,7 @@ import (
 	"regexp"
 	"strings"
 
-	"resourcemgr/internal/transaction"
+	"mimo/internal/transaction"
 )
 
 func RegisterGrubAndInitActions(txn *transaction.Transaction) error {
@@ -25,9 +25,7 @@ func RegisterGrubAndInitActions(txn *transaction.Transaction) error {
 		return fmt.Errorf("nil transaction")
 	}
 
-	// -------------------------------
-	// 1. Modify GRUB_CMDLINE_LINUX_DEFAULT
-	// -------------------------------
+
 	grubFile := filepath.Clean("/etc/default/grub")
 	var origGrub []byte
 	if b, err := os.ReadFile(grubFile); err == nil {
