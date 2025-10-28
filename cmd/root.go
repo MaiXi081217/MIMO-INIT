@@ -20,6 +20,7 @@ var RootCmd = &cobra.Command{
 		skip := map[string]bool{
 			"completion": true,
 			"help":       true,
+			"update":     true,
 		}
 		if skip[cmd.Name()] {
 			return nil

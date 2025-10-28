@@ -15,6 +15,7 @@ var updateCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		sysFlag, _ := cmd.Flags().GetBool("sys")
 		tgtFlag, _ := cmd.Flags().GetBool("target")
+		
 
 		if !sysFlag && !tgtFlag {
 			fmt.Println("Specify one of the options: --sys or --target")

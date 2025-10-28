@@ -21,7 +21,7 @@ func GetClient() (*spdk.Client) {
 	once.Do(func() {
 		c, err := spdk.CreateClientWithJsonCodec(spdk.Unix, SocketAddress)
 		if err != nil {
-			log.Fatalf("无法连接  RPC (%s): %v", SocketAddress, err)
+			log.Fatalf("无法连接  RPC (%s):", SocketAddress)
 		}
 		clientInstance = c
 	})
