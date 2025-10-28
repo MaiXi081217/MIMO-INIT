@@ -84,7 +84,7 @@ echo " 复制完成"
 # -------------------------------
 # 编译 Go 程序（带版本号后缀）
 # -------------------------------
-OUTPUT_BIN="bin/mimo-update-${VERSION}"
+OUTPUT_BIN="bin/mimo${VERSION}"
 echo " 开始编译 Go 程序..."
 if go build -o "$OUTPUT_BIN" main.go; then
     echo " Go 编译完成：$OUTPUT_BIN"
