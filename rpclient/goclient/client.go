@@ -17,7 +17,7 @@ var (
 )
 
 // GetClient 获取单例 RPC 客户端
-func GetClient() (*spdk.Client) {
+func GetClient() *spdk.Client {
 	once.Do(func() {
 		c, err := spdk.CreateClientWithJsonCodec(spdk.Unix, SocketAddress)
 		if err != nil {

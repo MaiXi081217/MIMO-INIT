@@ -3,9 +3,6 @@ package run
 import (
 	"fmt"
 	"log"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"mimo/internal/decompress"
 	"mimo/internal/env"
 	"mimo/internal/fileops"
@@ -15,6 +12,9 @@ import (
 	"mimo/internal/system"
 	"mimo/internal/systemd"
 	"mimo/internal/transaction"
+	"os"
+	"os/exec"
+	"path/filepath"
 )
 
 const (
@@ -43,6 +43,15 @@ func RunPkgDep() {
 	if pkgdepScript == "" {
 		fmt.Println("WARN: dependency script not found, skipping")
 		return
+	}
+	fmt.Println("INFO: running 'sudo apt update'...")
+	updateCmd := exec.Command("sudo", "apt", "update")
+	updateCmd.Stdout = os.Stdout
+	updateCmd.Stderr = os.Stderr
+	if err := updateCmd.Run(); err != nil {
+		log.Printf("WARN: 'apt update' failed: %v", err)
+	} else {
+		fmt.Println("INFO: 'apt update' completed")
 	}
 
 	fmt.Println("INFO: installing package dependencies; this may take some time...")
