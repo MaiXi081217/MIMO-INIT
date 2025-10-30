@@ -9,7 +9,7 @@ import (
 	spdk "github.com/spdk/spdk/go/rpc/client"
 )
 
-const SocketAddress = "/var/tmp/spdk.sock"
+const SocketAddress = "/var/tmp/mimo.sock"
 
 var (
 	clientInstance *spdk.Client
