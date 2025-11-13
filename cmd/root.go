@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"os"
 
-	"mimo/rpclient/goclient"
+	"github.com/mimo/mimo-rpc-service/client"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
+
+var socketAddr string
 
 // RootCmd 根命令
 var RootCmd = &cobra.Command{
@@ -26,9 +28,17 @@ var RootCmd = &cobra.Command{
 			return nil
 		}
 
+		// 设置 socket 地址
+		if socketAddr != "" {
+			client.SetSocketAddress(socketAddr)
+		}
+
 		// 仅对已注册命令初始化 RPC
 		if isRegisteredCommand(cmd, args) {
-			_ = goclient.GetClient()
+			_, err := client.GetClient()
+			if err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -140,4 +150,5 @@ var completionCmd = &cobra.Command{
 
 func init() {
 	RootCmd.AddCommand(completionCmd)
+	RootCmd.PersistentFlags().StringVar(&socketAddr, "socket", "", "RPC socket address (default: /var/tmp/mimo.sock)")
 }

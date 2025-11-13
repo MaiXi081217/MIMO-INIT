@@ -1,17 +1,31 @@
 package rpc
 
 import (
+	"encoding/json"
 	"fmt"
-	. "mimo/cmd"
-	"mimo/rpclient/goclient"
 	"strings"
+	. "mimo/cmd"
+	"github.com/mimo/mimo-rpc-service/service"
 
 	"github.com/spf13/cobra"
 )
 
-// ======================================================
-// bdev_get_bdevs
-// ======================================================
+// getBdevService 从命令中获取 socket 地址并创建服务实例
+func getBdevService(cmd *cobra.Command) *service.BdevService {
+	socketAddr, _ := cmd.Root().PersistentFlags().GetString("socket")
+	return service.NewBdevService(socketAddr)
+}
+
+// printResult 格式化并打印结果
+func printResult(result interface{}) error {
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(data))
+	return nil
+}
+
 func bdevGetBdevsCmd() *cobra.Command {
 	var (
 		bdevName string
@@ -25,59 +39,28 @@ func bdevGetBdevsCmd() *cobra.Command {
 If a name is given, only that bdev is returned.
 With a nonzero timeout, waits until the bdev appears or the timeout expires.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			params := goclient.BuildParams(map[string]any{
-				"name":       bdevName,
-				"timeout_ms": timeout * 1000,
-			})
-
-			result, err := goclient.Call("bdev_get_bdevs", params)
-			if err != nil {
-				return fmt.Errorf("get bdev failed: %v", err)
+			var result interface{}
+			var err error
+			
+			// 如果没有指定 bdev 名称，使用便利方法
+			if bdevName == "" && timeout == 0 {
+				result, err = getBdevService(cmd).GetAllBdevs()
+			} else {
+				result, err = getBdevService(cmd).GetBdevs(bdevName, timeout*1000)
 			}
-
-			fmt.Println("返回结果：")
-			fmt.Println(string(result))
-			return nil
+			
+			if err != nil {
+				return err
+			}
+			return printResult(result)
 		},
 	}
 
 	cmd.Flags().StringVarP(&bdevName, "bdev", "b", "", "bdev name (optional)")
 	cmd.Flags().IntVarP(&timeout, "timeout", "t", 0, "timeout in seconds (optional)")
 	return cmd
-
-	/*
-		Example response:
-		{
-		  "jsonrpc": "2.0",
-		  "id": 1,
-		  "result": [
-		    {
-		      "name": "Malloc0",
-		      "product_name": "Malloc disk",
-		      "block_size": 512,
-		      "num_blocks": 20480,
-		      "claimed": false,
-		      "zoned": false,
-		      "supported_io_types": {
-		        "read": true,
-		        "write": true,
-		        "unmap": true,
-		        "write_zeroes": true,
-		        "flush": true,
-		        "reset": true,
-		        "nvme_admin": false,
-		        "nvme_io": false
-		      },
-		      "driver_specific": {}
-		    }
-		  ]
-		}
-	*/
 }
 
-// ======================================================
-// bdev_nvme_attach_controller
-// ======================================================
 func bdevNvmeAttachControllerCmd() *cobra.Command {
 	var (
 		name   string
@@ -90,21 +73,20 @@ func bdevNvmeAttachControllerCmd() *cobra.Command {
 		Short: "Attach a local PCIe NVMe controller.",
 		Long:  "Attach a local PCIe NVMe controller to the system using its PCIe address.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-
-			params := goclient.BuildParams(map[string]any{
-				"name":   name,
-				"trtype": trtype,
-				"traddr": traddr,
-			})
-
-			result, err := goclient.Call("bdev_nvme_attach_controller", params)
-			if err != nil {
-				return fmt.Errorf("连接 NVMe 控制器失败: %v", err)
+			var result interface{}
+			var err error
+			
+			// 如果 trtype 为空或为 "PCIe"，使用便利方法
+			if trtype == "" || trtype == "PCIe" {
+				result, err = getBdevService(cmd).AttachNvmeControllerByPCIe(name, traddr)
+			} else {
+				result, err = getBdevService(cmd).AttachNvmeController(name, trtype, traddr)
 			}
-
-			fmt.Println("返回结果：")
-			fmt.Println(string(result))
-			return nil
+			
+			if err != nil {
+				return err
+			}
+			return printResult(result)
 		},
 	}
 
@@ -116,22 +98,8 @@ func bdevNvmeAttachControllerCmd() *cobra.Command {
 	cmd.MarkFlagRequired("traddr")
 
 	return cmd
-	/*
-		Example response:
-		{
-		  "jsonrpc": "2.0",
-		  "id": 1,
-		  "result": [
-		    "Nvme0n1"
-		  ]
-		}
-	*/
-
 }
 
-// ======================================================
-// bdev_malloc_create
-// ======================================================
 func bdevMallocCreateCmd() *cobra.Command {
 	var (
 		bdevName  string
@@ -145,27 +113,11 @@ func bdevMallocCreateCmd() *cobra.Command {
 		Short: "Create a malloc bdev",
 		Long:  "Create a malloc bdev with specified total size (MB) and block size (bytes).",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if totalSize <= 0 || blockSize <= 0 {
-				return fmt.Errorf("total_size and block_size must be positive")
-			}
-
-			numBlocks := int((totalSize * 1024 * 1024) / float64(blockSize))
-
-			params := goclient.BuildParams(map[string]any{
-				"name":       bdevName,
-				"uuid":       uuid,
-				"block_size": blockSize,
-				"num_blocks": numBlocks,
-			})
-
-			result, err := goclient.Call("bdev_malloc_create", params)
+			result, err := getBdevService(cmd).CreateMallocBdev(bdevName, uuid, totalSize, blockSize)
 			if err != nil {
-				return fmt.Errorf("create malloc bdev failed: %v", err)
+				return err
 			}
-
-			fmt.Println("返回结果：")
-			fmt.Println(string(result))
-			return nil
+			return printResult(result)
 		},
 	}
 
@@ -178,14 +130,6 @@ func bdevMallocCreateCmd() *cobra.Command {
 	cmd.MarkFlagRequired("block")
 
 	return cmd
-	/*
-		Example response:
-		{
-		  "jsonrpc": "2.0",
-		  "id": 1,
-		  "result": "Malloc0"
-		}
-	*/
 }
 
 func bdevRaidCreateCmd() *cobra.Command {
@@ -203,34 +147,33 @@ func bdevRaidCreateCmd() *cobra.Command {
 		Short: "Create a RAID bdev",
 		Long:  "Construct a new RAID bdev from base bdevs with specified RAID level and optional strip size.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if name == "" || raidLevel == "" || baseBdevs == "" {
-				return fmt.Errorf("name, raid_level, and base_bdevs are required")
-			}
-
-			// baseBdevs 支持空格分隔字符串
+			var result interface{}
+			var err error
+			
+			// 如果只提供了基本参数，使用简化方法
 			baseList := strings.Fields(baseBdevs)
-
-			params := goclient.BuildParams(map[string]any{
-				"name":          name,
-				"raid_level":    raidLevel,
-				"base_bdevs":    baseList,
-				"strip_size_kb": stripSizeKB,
-				"uuid":          uuid,
-				"superblock":    superblock,
-			})
-
-			result, err := goclient.Call("bdev_raid_create", params)
-			if err != nil {
-				return fmt.Errorf("create RAID bdev failed: %v", err)
+			if stripSizeKB == 64 && uuid == "" && !superblock {
+				result, err = getBdevService(cmd).CreateRaidBdevSimple(name, raidLevel, baseList)
+			} else {
+				// 使用完整方法
+				req := service.CreateRaidBdevRequest{
+					Name:        name,
+					RaidLevel:   raidLevel,
+					BaseBdevs:   baseList,
+					StripSizeKB: stripSizeKB,
+					UUID:        uuid,
+					Superblock:  superblock,
+				}
+				result, err = getBdevService(cmd).CreateRaidBdev(req)
 			}
-
-			fmt.Println("返回结果：")
-			fmt.Println(string(result))
-			return nil
+			
+			if err != nil {
+				return err
+			}
+			return printResult(result)
 		},
 	}
 
-	// 短选项和长选项
 	cmd.Flags().StringVarP(&name, "name", "n", "", "RAID bdev name (required)")
 	cmd.Flags().StringVarP(&raidLevel, "raid-level", "r", "", "RAID level, e.g., 0, 1, concat (required)")
 	cmd.Flags().StringVarP(&baseBdevs, "base-bdevs", "b", "", "Base bdevs, space-separated in quotes (required)")
@@ -243,15 +186,6 @@ func bdevRaidCreateCmd() *cobra.Command {
 	cmd.MarkFlagRequired("base-bdevs")
 
 	return cmd
-
-	/*
-		Example response:
-		{
-		  "jsonrpc": "2.0",
-		  "id": 1,
-		  "result": true
-		}
-	*/
 }
 
 func init() {
