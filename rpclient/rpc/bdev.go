@@ -57,7 +57,7 @@ With a nonzero timeout, waits until the bdev appears or the timeout expires.`,
 	}
 
 	cmd.Flags().StringVarP(&bdevName, "bdev", "b", "", "bdev name (optional)")
-	cmd.Flags().IntVarP(&timeout, "timeout", "t", 0, "timeout in seconds (optional)")
+	cmd.Flags().IntVarP(&timeout, "timeout", "t", 0, "timeout in seconds (optional, default: 0)")
 	return cmd
 }
 
@@ -90,11 +90,11 @@ func bdevNvmeAttachControllerCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&name, "bdev", "b", "", "bdev name (required)")
-	cmd.MarkFlagRequired("bdev")
+	cmd.Flags().StringVarP(&name, "name", "b", "", "Name of the NVMe controller (required)")
+	cmd.MarkFlagRequired("name")
 
-	cmd.Flags().StringVarP(&trtype, "trtype", "t", "PCIe", "Transport type, default PCIe")
-	cmd.Flags().StringVarP(&traddr, "traddr", "a", "", "PCIe address (required)")
+	cmd.Flags().StringVarP(&trtype, "trtype", "t", "PCIe", "Transport type: e.g., rdma, pcie (default: PCIe)")
+	cmd.Flags().StringVarP(&traddr, "traddr", "a", "", "Transport address: e.g., an ip address or BDF (required)")
 	cmd.MarkFlagRequired("traddr")
 
 	return cmd
@@ -152,7 +152,7 @@ func bdevRaidCreateCmd() *cobra.Command {
 			
 			// 如果只提供了基本参数，使用简化方法
 			baseList := strings.Fields(baseBdevs)
-			if stripSizeKB == 64 && uuid == "" && !superblock {
+			if stripSizeKB == 0 && uuid == "" && !superblock {
 				result, err = getBdevService(cmd).CreateRaidBdevSimple(name, raidLevel, baseList)
 			} else {
 				// 使用完整方法
@@ -175,11 +175,11 @@ func bdevRaidCreateCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&name, "name", "n", "", "RAID bdev name (required)")
-	cmd.Flags().StringVarP(&raidLevel, "raid-level", "r", "", "RAID level, e.g., 0, 1, concat (required)")
-	cmd.Flags().StringVarP(&baseBdevs, "base-bdevs", "b", "", "Base bdevs, space-separated in quotes (required)")
-	cmd.Flags().IntVarP(&stripSizeKB, "strip-size-kb", "z", 64, "Strip size in KB (optional),default 64")
+	cmd.Flags().StringVarP(&raidLevel, "raid-level", "r", "", "RAID level: raid0, raid1, raid10 (or 10), concat (required)")
+	cmd.Flags().StringVarP(&baseBdevs, "base-bdevs", "b", "", "Base bdevs, whitespace separated list in quotes (required)")
+	cmd.Flags().IntVarP(&stripSizeKB, "strip-size-kb", "z", 0, "Strip size in KB (optional)")
 	cmd.Flags().StringVar(&uuid, "uuid", "", "UUID for this RAID bdev (optional)")
-	cmd.Flags().BoolVarP(&superblock, "superblock", "s", false, "Store RAID info in superblock on each base bdev(optional)")
+	cmd.Flags().BoolVarP(&superblock, "superblock", "s", false, "Store RAID info in superblock on each base bdev (default: false)")
 
 	cmd.MarkFlagRequired("name")
 	cmd.MarkFlagRequired("raid-level")
@@ -188,9 +188,136 @@ func bdevRaidCreateCmd() *cobra.Command {
 	return cmd
 }
 
+func bdevNvmeDetachControllerCmd() *cobra.Command {
+	var (
+		trtype string
+		traddr string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "bdev_nvme_detach_controller",
+		Short: "Detach an NVMe controller and delete any associated bdevs",
+		Long:  "Detach an NVMe controller and delete any associated bdevs.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			result, err := getBdevService(cmd).DetachNvmeController(name, trtype, traddr)
+			if err != nil {
+				return err
+			}
+			return printResult(result)
+		},
+	}
+
+	cmd.Flags().StringVarP(&trtype, "trtype", "t", "", "NVMe-oF target trtype: e.g., rdma, pcie")
+	cmd.Flags().StringVarP(&traddr, "traddr", "a", "", "NVMe-oF target address: e.g., an ip address or BDF")
+
+	return cmd
+}
+
+func bdevMallocDeleteCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "bdev_malloc_delete",
+		Short: "Delete a malloc bdev",
+		Long:  "Delete a malloc bdev.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := getBdevService(cmd).DeleteMallocBdev(args[0])
+			if err != nil {
+				return err
+			}
+			return printResult(result)
+		},
+	}
+
+	return cmd
+}
+
+func bdevRaidDeleteCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "bdev_raid_delete",
+		Short: "Delete existing RAID bdev",
+		Long:  "Delete existing RAID bdev.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := getBdevService(cmd).DeleteRaidBdev(args[0])
+			if err != nil {
+				return err
+			}
+			return printResult(result)
+		},
+	}
+
+	return cmd
+}
+
+func bdevRaidAddBaseBdevCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "bdev_raid_add_base_bdev",
+		Short: "Add base bdev to existing RAID bdev",
+		Long:  "Add base bdev to existing RAID bdev.",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := getBdevService(cmd).AddRaidBaseBdev(args[0], args[1])
+			if err != nil {
+				return err
+			}
+			return printResult(result)
+		},
+	}
+
+	return cmd
+}
+
+func bdevRaidRemoveBaseBdevCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "bdev_raid_remove_base_bdev",
+		Short: "Remove base bdev from existing RAID bdev",
+		Long:  "Remove base bdev from existing RAID bdev.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := getBdevService(cmd).RemoveRaidBaseBdev(args[0])
+			if err != nil {
+				return err
+			}
+			return printResult(result)
+		},
+	}
+
+	return cmd
+}
+
+func bdevWipeSuperblockCmd() *cobra.Command {
+	var size int
+
+	cmd := &cobra.Command{
+		Use:   "bdev_wipe_superblock",
+		Short: "Wipe superblock area of a bdev",
+		Long:  "Wipe superblock area (first N bytes) of a bdev. Default size is 1MB.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := getBdevService(cmd).WipeSuperblock(args[0], size)
+			if err != nil {
+				return err
+			}
+			return printResult(result)
+		},
+	}
+
+	cmd.Flags().IntVarP(&size, "size", "s", 0, "Size in bytes to wipe (default: 1MB)")
+
+	return cmd
+}
+
 func init() {
 	RootCmd.AddCommand(bdevGetBdevsCmd())
 	RootCmd.AddCommand(bdevNvmeAttachControllerCmd())
+	RootCmd.AddCommand(bdevNvmeDetachControllerCmd())
 	RootCmd.AddCommand(bdevMallocCreateCmd())
+	RootCmd.AddCommand(bdevMallocDeleteCmd())
 	RootCmd.AddCommand(bdevRaidCreateCmd())
+	RootCmd.AddCommand(bdevRaidDeleteCmd())
+	RootCmd.AddCommand(bdevRaidAddBaseBdevCmd())
+	RootCmd.AddCommand(bdevRaidRemoveBaseBdevCmd())
+	RootCmd.AddCommand(bdevWipeSuperblockCmd())
 }
