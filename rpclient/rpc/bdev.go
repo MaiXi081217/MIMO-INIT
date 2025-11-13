@@ -39,16 +39,7 @@ func bdevGetBdevsCmd() *cobra.Command {
 If a name is given, only that bdev is returned.
 With a nonzero timeout, waits until the bdev appears or the timeout expires.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var result interface{}
-			var err error
-			
-			// 如果没有指定 bdev 名称，使用便利方法
-			if bdevName == "" && timeout == 0 {
-				result, err = getBdevService(cmd).GetAllBdevs()
-			} else {
-				result, err = getBdevService(cmd).GetBdevs(bdevName, timeout*1000)
-			}
-			
+			result, err := getBdevService(cmd).GetBdevs(bdevName, timeout*1000)
 			if err != nil {
 				return err
 			}
@@ -73,16 +64,7 @@ func bdevNvmeAttachControllerCmd() *cobra.Command {
 		Short: "Attach a local PCIe NVMe controller.",
 		Long:  "Attach a local PCIe NVMe controller to the system using its PCIe address.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var result interface{}
-			var err error
-			
-			// 如果 trtype 为空或为 "PCIe"，使用便利方法
-			if trtype == "" || trtype == "PCIe" {
-				result, err = getBdevService(cmd).AttachNvmeControllerByPCIe(name, traddr)
-			} else {
-				result, err = getBdevService(cmd).AttachNvmeController(name, trtype, traddr)
-			}
-			
+			result, err := getBdevService(cmd).AttachNvmeController(name, trtype, traddr)
 			if err != nil {
 				return err
 			}
@@ -93,8 +75,9 @@ func bdevNvmeAttachControllerCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&name, "name", "b", "", "Name of the NVMe controller (required)")
 	cmd.MarkFlagRequired("name")
 
-	cmd.Flags().StringVarP(&trtype, "trtype", "t", "PCIe", "Transport type: e.g., rdma, pcie (default: PCIe)")
+	cmd.Flags().StringVarP(&trtype, "trtype", "t", "", "Transport type: e.g., rdma, pcie (required)")
 	cmd.Flags().StringVarP(&traddr, "traddr", "a", "", "Transport address: e.g., an ip address or BDF (required)")
+	cmd.MarkFlagRequired("trtype")
 	cmd.MarkFlagRequired("traddr")
 
 	return cmd
@@ -147,26 +130,16 @@ func bdevRaidCreateCmd() *cobra.Command {
 		Short: "Create a RAID bdev",
 		Long:  "Construct a new RAID bdev from base bdevs with specified RAID level and optional strip size.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var result interface{}
-			var err error
-			
-			// 如果只提供了基本参数，使用简化方法
 			baseList := strings.Fields(baseBdevs)
-			if stripSizeKB == 0 && uuid == "" && !superblock {
-				result, err = getBdevService(cmd).CreateRaidBdevSimple(name, raidLevel, baseList)
-			} else {
-				// 使用完整方法
-				req := service.CreateRaidBdevRequest{
-					Name:        name,
-					RaidLevel:   raidLevel,
-					BaseBdevs:   baseList,
-					StripSizeKB: stripSizeKB,
-					UUID:        uuid,
-					Superblock:  superblock,
-				}
-				result, err = getBdevService(cmd).CreateRaidBdev(req)
+			req := service.CreateRaidBdevRequest{
+				Name:        name,
+				RaidLevel:   raidLevel,
+				BaseBdevs:   baseList,
+				StripSizeKB: stripSizeKB,
+				UUID:        uuid,
+				Superblock:  superblock,
 			}
-			
+			result, err := getBdevService(cmd).CreateRaidBdev(req)
 			if err != nil {
 				return err
 			}
