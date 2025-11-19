@@ -1,44 +1,9 @@
 {
+  "init_config": "/tmp/mimo-output/init-config.json",
   "file_mappings": [
-    {
-      "src": "/tmp/mimo-output/file/boot.sh",
-      "dst": "/usr/local/bin/boot.sh"
-    },
-    {
-      "src": "/tmp/mimo-output/file/boot.service",
-      "dst": "/etc/systemd/system/boot.service"
-    },
-    {
-      "src": "/tmp/mimo-output/file/gen-issue.sh",
-      "dst": "/usr/local/bin/gen-issue.sh"
-    },
-    {
-      "src": "/tmp/mimo-output/file/override.conf",
-      "dst": "/etc/systemd/system/getty@tty1.service.d/override.conf"
-    },
-    {
-      "src": "/tmp/mimo-output/file/rdma-nvme.conf",
-      "dst": "/etc/modules-load.d/rdma-nvme.conf"
-    },
-    {
-      "src": "/tmp/mimo-output/file/mst.service",
-      "dst": "/etc/systemd/system/mst.service"
-    },
-    {
-      "src": "/tmp/mimo-output/file/welcome.sh",
-      "dst": "/etc/profile.d/welcome.sh"
-    },
     {
       "src": "/tmp/mimo-output/file/SPDK_for_MIMO",
       "dst": "/usr/local/mimo"
-    },
-    {
-      "src": "/tmp/mimo-output/file/os-release",
-      "dst": "/etc/os-release"
-    },
-    {
-      "src": "/tmp/mimo-output/file/lsb-release",
-      "dst": "/etc/lsb-release"
     }
   ],
   "version": [

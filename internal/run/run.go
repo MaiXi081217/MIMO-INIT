@@ -7,6 +7,7 @@ import (
 	"mimo/internal/env"
 	"mimo/internal/fileops"
 	"mimo/internal/grub"
+	"mimo/internal/init"
 	"mimo/internal/motd"
 	"mimo/internal/spdk"
 	"mimo/internal/system"
@@ -74,6 +75,18 @@ func RunTransaction(cfg *fileops.Config) {
 		log.Fatalf("ERROR: setup MOTD actions failed")
 	}
 
+	// 使用统一的初始化配置系统
+	if cfg.InitConfig != "" {
+		initCfg, err := init.LoadInitConfig(cfg.InitConfig)
+		if err != nil {
+			log.Fatalf("ERROR: load init config failed: %v", err)
+		}
+		if err := init.RegisterInitActions(txn, initCfg, tmpDir); err != nil {
+			log.Fatalf("ERROR: setup init actions failed: %v", err)
+		}
+	}
+
+	// 处理目录复制（如SPDK_for_MIMO）
 	if err := fileops.RegisterCopyActions(txn, cfg); err != nil {
 		log.Fatalf("ERROR: setup file copy actions failed")
 	}
@@ -110,8 +123,33 @@ func RunUpdate() {
 
 	RunTransaction(cfg)
 
-	if err := systemd.EnableServices(cfg); err != nil {
-		log.Fatalf("ERROR: enabling system services failed")
+	// 从初始化配置中获取服务列表
+	var services []string
+	if cfg.InitConfig != "" {
+		initCfg, err := init.LoadInitConfig(cfg.InitConfig)
+		if err == nil && len(initCfg.Services) > 0 {
+			services = initCfg.Services
+		}
+	}
+
+	// 如果没有从init-config获取到服务，则从file_mappings中提取（向后兼容）
+	if len(services) == 0 {
+		if err := systemd.EnableServices(cfg); err != nil {
+			log.Fatalf("ERROR: enabling system services failed")
+		}
+	} else {
+		// 使用统一配置中的服务列表
+		if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
+			log.Fatalf("ERROR: daemon-reload failed: %v", err)
+		}
+		for _, s := range services {
+			if err := exec.Command("systemctl", "enable", s).Run(); err != nil {
+				log.Printf("WARN: enable %s failed", s)
+			}
+			if err := exec.Command("systemctl", "start", "--no-block", s).Run(); err != nil {
+				log.Printf("WARN: start (non-blocking) %s failed", s)
+			}
+		}
 	}
 
 	if err := system.DisableCloudInit(); err != nil {
