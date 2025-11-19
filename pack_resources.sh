@@ -9,6 +9,7 @@ set -e
 # -------------------------------
 SRC_DIR="file"
 CONFIG_FILE="config.json"
+INIT_CONFIG_FILE="init-config.json"
 OUT_DIR="resources"
 OUT_FILE="$OUT_DIR/resources.tar.gz"
 HASH_FILE="$OUT_DIR/resources.sha256"
@@ -36,6 +37,11 @@ if [ ! -f "$CONFIG_FILE" ]; then
     exit 1
 fi
 
+if [ ! -f "$INIT_CONFIG_FILE" ]; then
+    echo " 警告：统一初始化配置文件 $INIT_CONFIG_FILE 不存在！"
+    echo " 将使用传统的多文件方式"
+fi
+
 # -------------------------------
 # 读取版本号
 # -------------------------------
@@ -61,7 +67,11 @@ fi
 # 打包资源文件
 # -------------------------------
 echo " 正在打包资源文件..."
-tar -chzf "$OUT_FILE" "$SRC_DIR" "$CONFIG_FILE"
+if [ -f "$INIT_CONFIG_FILE" ]; then
+    tar -chzf "$OUT_FILE" "$SRC_DIR" "$CONFIG_FILE" "$INIT_CONFIG_FILE"
+else
+    tar -chzf "$OUT_FILE" "$SRC_DIR" "$CONFIG_FILE"
+fi
 echo " 打包完成：$OUT_FILE"
 
 # -------------------------------

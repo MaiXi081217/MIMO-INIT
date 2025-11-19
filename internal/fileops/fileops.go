@@ -22,7 +22,8 @@ type FileMapping struct {
 }
 
 type Config struct {
-	FileMappings []FileMapping `json:"file_mappings"`
+	InitConfig   string        `json:"init_config,omitempty"`   // 统一初始化配置文件路径
+	FileMappings []FileMapping `json:"file_mappings"`           // 文件映射（主要用于目录，如SPDK_for_MIMO）
 }
 
 func LoadConfig(path string) (*Config, error) {

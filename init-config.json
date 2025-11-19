@@ -1,0 +1,63 @@
+{
+  "version": "1.0.0",
+  "files": [
+    {
+      "path": "/usr/local/bin/boot.sh",
+      "content": "#!/bin/bash\nset -euo pipefail\nexport TERM=xterm\nrows=$(tput lines || echo 24)\ncols=$(tput cols || echo 80)\nclear\nlogo=\"\n┌──────────────────────────────────┐\n│ __  __   _____   __  __    ____  │\n│|  \\/  | |_   _| |  \\/  |  / __ \\ │\n│| \\  / |   | |   | \\  / | | |  | |│\n│| |\\/| |   | |   | |\\/| | | |  | |│\n│| |  | |  _| |_  | |  | | | |__| |│\n│|_|  |_| |_____| |_|  |_|  \\____/ │\n│                                  │\n└──────────────────────────────────┘\n\"\nlogo_lines=$(echo \"$logo\" | wc -l)\npad_lines=$(( (rows - logo_lines - 6) / 2 ))\nfor ((i=0; i<pad_lines; i++)); do echo; done\nwhile IFS= read -r line; do\n    pad_spaces=$(( (cols - ${#line}) / 2 ))\n    printf \"%*s%s\\n\" $pad_spaces \"\" \"$line\"\ndone <<< \"$logo\"\nwelcome=\"Welcome to MIMO Storage\"\npad_spaces=$(( (cols - ${#welcome}) / 2 ))\nprintf \"%*s%s\\n\\n\" $pad_spaces \"\" \"$welcome\"\nbar=\"##################################################\"\nfor i in {0..50}; do\n    percent=$((i*2))\n    filled=$i\n    progress=\"[${bar:0:filled}$(printf %*s $((50-filled)))] $percent%\"\n    pad=$(( (cols - ${#progress}) / 2 ))\n    printf \"\\r%*s%s\" $pad \"\" \"$progress\"\n    sleep 0.2\ndone\necho\nmsg=\"✅ System Ready!\"\npad=$(( (cols - ${#msg}) / 2 ))\nprintf \"%*s%s\\n\" $pad \"\" \"$msg\"\n",
+      "mode": "0755",
+      "type": "script"
+    },
+    {
+      "path": "/etc/systemd/system/boot.service",
+      "content": "[Unit]\nDescription=Custom ASCII Boot Progress\nAfter=local-fs.target\nBefore=getty@tty1.service\nDefaultDependencies=no\n\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/boot.sh\nStandardInput=tty\nStandardOutput=tty\nStandardError=tty\nTTYPath=/dev/tty1\nEnvironment=TERM=xterm\nRemainAfterExit=yes\n\n[Install]\nWantedBy=multi-user.target\n",
+      "mode": "0644",
+      "type": "service"
+    },
+    {
+      "path": "/usr/local/bin/gen-issue.sh",
+      "content": "#!/bin/bash\nHOST=$(hostname)\nVERSION=\"1.0.0\"\nDATE=$(date \"+%Y-%m-%d %H:%M:%S\")\n\ncat <<ISSUE > /etc/issue\n┌──────────────────────────────────┐\n│     Welcome to MIMO Storage      │\n└──────────────────────────────────┘\nISSUE\n\ncat <<EOF2 >> /etc/issue\nHostname : $HOST\nVersion  : $VERSION\nUpdated  : $DATE\n\nNetwork Interfaces:\nEOF2\n\nip -o link show | awk -F\": \" '!/ lo:/ {print $2}' | while read -r IFACE; do\n  STATE=$(ip -o link show dev \"$IFACE\" | awk '/state/ {print $9}')\n  [[ -z \"$STATE\" ]] && STATE=$(cat /sys/class/net/$IFACE/operstate 2>/dev/null || echo none)\n\n  IPADDR=$(ip -o -4 addr show dev \"$IFACE\" | awk '{print $4; exit}')\n  [[ -z \"$IPADDR\" ]] && IPADDR=\"(no IP)\"\n\n  echo \"    $IFACE: $IPADDR ($STATE)\" >> /etc/issue\ndone\n\necho >> /etc/issue\n",
+      "mode": "0755",
+      "type": "script"
+    },
+    {
+      "path": "/etc/systemd/system/getty@tty1.service.d/override.conf",
+      "content": "[Unit]\nAfter=boot.service\n[Service]\nExecStartPre=/usr/local/bin/gen-issue.sh\n",
+      "mode": "0644",
+      "type": "config"
+    },
+    {
+      "path": "/etc/modules-load.d/rdma-nvme.conf",
+      "content": "svcrdma\nrpcrdma\nnvme\nnvme_core\nnvme_rdma\nib_ipoib\n",
+      "mode": "0644",
+      "type": "config"
+    },
+    {
+      "path": "/etc/systemd/system/mst.service",
+      "content": "[Unit]\nDescription=Start Mellanox mst\nAfter=multi-user.target\nWants=multi-user.tar get\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/mst start\nRemainAfterExit=yes\n\n[Install]\nWantedBy=multi-user.target\n",
+      "mode": "0644",
+      "type": "service"
+    },
+    {
+      "path": "/etc/profile.d/welcome.sh",
+      "content": "#!/bin/bash\nclear\nGREEN=\"\\e[32m\"\nRESET=\"\\e[0m\"\nRED=\"\\e[31m\"\necho \"Welcome to MIMO Server!\"\necho \"* Hostname      : $(hostname)\"\necho \"* Version       : 1.0.0($(uname -r))\"\necho\necho \"Network:\"\necho\nPRIMARY_IP=$(hostname -I | awk \"{print \\$1}\")\nif [ -n \"$PRIMARY_IP\" ]; then\n    echo -e \"  WebGUI Address: ${RED}http://$PRIMARY_IP${RESET}\"\nelse\n    echo \"  WebGUI Address: (No IP assigned)\"\nfi\necho\n\nip -o link show | awk -F\": \" '!/ lo:/ {print $2}' | while read -r IFACE; do\n    STATE=$(ip -o link show dev \"$IFACE\" | awk '/state/ {print $9}')\n    [[ -z \"$STATE\" ]] && STATE=$(cat /sys/class/net/$IFACE/operstate 2>/dev/null || echo none)\n\n    IPADDR=$(ip -o -4 addr show dev \"$IFACE\" | awk '{print $4; exit}')\n    [[ -z \"$IPADDR\" ]] && IPADDR=\"\"\n\n    echo \"    $IFACE: $IPADDR ($STATE)\"\ndone\necho\n",
+      "mode": "0644",
+      "type": "script"
+    },
+    {
+      "path": "/etc/os-release",
+      "content": "NAME=\"MIMO\"\nVERSION=\"20.04.6 LTS (Focal Fossa)\"\nID=ubuntu\nID_LIKE=debian\nPRETTY_NAME=\"MIMO\"\nVERSION_ID=\"20.04\"\nVERSION_CODENAME=focal\nUBUNTU_CODENAME=focal\n",
+      "mode": "0644",
+      "type": "config"
+    },
+    {
+      "path": "/etc/lsb-release",
+      "content": "DISTRIB_ID=Ubuntu\nDISTRIB_RELEASE=20.04\nDISTRIB_CODENAME=focal\n",
+      "mode": "0644",
+      "type": "config"
+    }
+  ],
+  "services": [
+    "boot.service",
+    "mst.service"
+  ]
+}
