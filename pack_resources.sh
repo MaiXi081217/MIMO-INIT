@@ -39,13 +39,16 @@ fi
 # -------------------------------
 # 读取版本号
 # -------------------------------
-# -------------------------------
-# 读取版本号
 VERSION_FILE="$SRC_DIR/SPDK_for_MIMO/VERSION.json"
 if [ -f "$VERSION_FILE" ]; then
-    # 提取 MIMO 字段作为版本号
-    VERSION=$(jq -r '.MIMO' "$VERSION_FILE" 2>/dev/null)
-    if [ -z "$VERSION" ]; then
+    # 尝试使用 jq 提取 MIMO 字段作为版本号
+    if command -v jq >/dev/null 2>&1; then
+        VERSION=$(jq -r '.MIMO' "$VERSION_FILE" 2>/dev/null)
+    else
+        # 如果没有 jq，使用 grep 和 sed 提取版本号
+        VERSION=$(grep -o '"MIMO"[[:space:]]*:[[:space:]]*"[^"]*"' "$VERSION_FILE" | sed -n 's/.*"MIMO"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+    fi
+    if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
         echo " 未找到 MIMO 版本号，使用默认 v0.0.0"
         VERSION="v0.0.0"
     else

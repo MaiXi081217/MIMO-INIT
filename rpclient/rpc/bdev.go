@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	. "mimo/cmd"
-	"github.com/mimo/mimo-rpc-service/service"
 
+	"github.com/mimo/mimo-rpc-service/service"
 	"github.com/spf13/cobra"
+	. "mimo/cmd"
 )
 
 // getBdevService 从命令中获取 socket 地址并创建服务实例

@@ -2,7 +2,6 @@ package main
 
 import (
 	cmd "mimo/cmd"
-	_ "mimo/rpclient/init"
 	_ "mimo/rpclient/rpc"
 )
 

@@ -39,6 +39,14 @@
     {
       "src": "/tmp/mimo-output/file/lsb-release",
       "dst": "/etc/lsb-release"
+    },
+    {
+      "src": "/tmp/mimo-output/file/go",
+      "dst": "/usr/local/go"
+    },
+    {
+      "src": "/tmp/mimo-output/file/go.sh",
+      "dst": "/etc/profile.d/go.sh"
     }
   ],
   "version": [

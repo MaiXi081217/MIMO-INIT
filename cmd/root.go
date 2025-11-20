@@ -58,38 +58,30 @@ func Execute() {
 	}
 }
 
-// 判断 args[0] 是否是注册的子命令
+// isRegisteredCommand 判断 args[0] 是否是注册的子命令
 func isRegisteredCommand(cmd *cobra.Command, args []string) bool {
 	if len(args) == 0 {
 		return true
 	}
 	for _, c := range cmd.Commands() {
-		if c.Name() == args[0] || contains(c.Aliases, args[0]) {
+		if c.Name() == args[0] {
 			return true
+		}
+		for _, alias := range c.Aliases {
+			if alias == args[0] {
+				return true
+			}
 		}
 	}
 	return false
 }
 
-// 辅助函数：检查 slice 是否包含字符串
-func contains(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
-// 自定义 help 输出
+// printHelp 自定义 help 输出
 func printHelp(cmd *cobra.Command) {
 	fmt.Printf("%s\n\n", cmd.Long)
-
-	// Usage
 	fmt.Println("Usage:")
 	fmt.Printf("  %s [command]\n\n", cmd.Use)
 
-	// 子命令
 	if len(cmd.Commands()) > 0 {
 		fmt.Println("Available Commands:")
 		for _, c := range cmd.Commands() {
@@ -97,15 +89,7 @@ func printHelp(cmd *cobra.Command) {
 		}
 	}
 
-	// 当前命令 flags
 	printFlags(cmd.Flags(), "Flags")
-
-	// 子命令 flags
-	for _, c := range cmd.Commands() {
-		if c.Flags().HasFlags() {
-			printFlags(c.Flags(), fmt.Sprintf("Command %s Flags", c.Name()))
-		}
-	}
 }
 
 // 输出 flag 列表
